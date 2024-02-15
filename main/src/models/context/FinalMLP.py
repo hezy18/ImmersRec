@@ -1,3 +1,8 @@
+""" FinalMLP
+Reference:
+	'FinalMLP: An Enhanced Two-Stream MLP Model for CTR Prediction', Mao et al, AAAI2023.
+"""
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -72,7 +77,7 @@ class FinalMLP(ContextModel):
 		
 		self.overall_bias = torch.nn.Parameter(torch.tensor([0.01]), requires_grad=True)
 		
-		self.feature_dim = self.context_feature_num * self.embedding_dim # 要改
+		self.feature_dim = self.context_feature_num * self.embedding_dim
 
 		# MLP 1
 		self.mlp1 = MLP_Block(input_dim=self.feature_dim,output_dim=None,hidden_units=eval(args.mlp1_hidden_units),
@@ -197,7 +202,7 @@ class FinalMLP(ContextModel):
 		y_pred = self.fusion_module(mlp1_output, mlp2_output) 
 		# y_pred = self.fusion_module(self.mlp1(feat1), self.mlp2(feat2))
 		# y_pred = self.output_activation(y_pred)
-		predictions = y_pred # 这里看一下用不用squeeze
+		predictions = y_pred
 
 		if self.training and self.DANN:
 			return {'prediction':predictions, 
@@ -213,19 +218,6 @@ class FinalMLP(ContextModel):
 		else:
 			return nn.Identity()
 
-	# class Dataset(ContextModel.Dataset):
-	# 	def __init__(self, model, corpus, phase):
-	# 		super().__init__(model, corpus, phase)
-	# 		self.remain_features = list(set(model.fs1_context)|set(model.fs2_context))
-
-	# 	def _get_feed_dict(self, index):
-	# 		feed_dict = super()._get_feed_dict(index)
-	# 		for f in self.remain_features:
-	# 			if f.startswith('c_'):
-	# 				feed_dict[f] = self.data[f][index]
-	# 			elif f.startswith('i_'):
-	# 				feed_dict[f] = np.array([self.corpus.item_features[iid][f] for iid in feed_dict['item_id']])
-	# 		return feed_dict
 
 class FeatureSelection(nn.Module):
 	def __init__(self, feature_map, feature_dim, embedding_dim, fs_hidden_units=[], 
@@ -294,12 +286,11 @@ class FeatureSelection(nn.Module):
 				elif ctx=='item_id':
 					ctx_emb = self.fs1_ctx_emb[i](feed_dict[ctx].int()) # 'item_id': (batch_size, num_item) -> (batch_size, 1, num_item, emb_size)
 					fs1_input.append(ctx_emb) 
-				# 其实还应该考虑其他的category feature的处理
 				elif ctx.startswith('u'):
 					ctx_emb = self.fs1_ctx_emb[i](feed_dict[ctx].unsqueeze(-1))
 					fs1_input.append(ctx_emb.repeat(1,flat_emb.size(1),1))
 				else: 
-					ctx_emb = self.fs1_ctx_emb[i](feed_dict[ctx]) # 对于c_immersion：(batch_size, num_item, 1) -> (batch_size, num_item, emb_size)
+					ctx_emb = self.fs1_ctx_emb[i](feed_dict[ctx]) # c_immersion：(batch_size, num_item, 1) -> (batch_size, num_item, emb_size)
 					fs1_input.append(ctx_emb)
 			fs1_input = torch.cat(fs1_input,dim=-1)
 		gt1 = self.fs1_gate(fs1_input) * 2
@@ -315,12 +306,11 @@ class FeatureSelection(nn.Module):
 				elif ctx=='item_id':
 					ctx_emb = self.fs2_ctx_emb[i](feed_dict[ctx].int()) # 'item_id': (batch_size, num_item) -> (batch_size, 1, num_item, emb_size)
 					fs2_input.append(ctx_emb) 
-				# 其实还应该考虑其他的category feature的处理
 				elif ctx.startswith('u'):
 					ctx_emb = self.fs2_ctx_emb[i](feed_dict[ctx].unsqueeze(-1))
 					fs2_input.append(ctx_emb.repeat(1,flat_emb.size(1),1))
 				else: 
-					ctx_emb = self.fs2_ctx_emb[i](feed_dict[ctx]) # 对于c_immersion：(batch_size, num_item, 1) -> (batch_size, num_item, emb_size)
+					ctx_emb = self.fs2_ctx_emb[i](feed_dict[ctx]) # c_immersion：(batch_size, num_item, 1) -> (batch_size, num_item, emb_size)
 					fs2_input.append(ctx_emb) 
 			fs2_input = torch.cat(fs2_input,dim=-1)
 		gt2 = self.fs2_gate(fs2_input) * 2

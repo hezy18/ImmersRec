@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 """AutoInt
 	Weiping Song et al. "AutoInt: Automatic Feature Interaction Learning via Self-Attentive Neural Networks"
 	in CIKM 2018.
@@ -39,6 +37,8 @@ class AutoInt(ContextModel):
 		self.include_context_features = corpus.include_context_features
 		self.include_immersion = corpus.include_immersion
 		self.include_source_domain = corpus.include_source_domain
+		if self.include_source_domain:
+			self.source_data = corpus.source_data
 		self.DANN = corpus.DANN
 
 		if self.include_context_features:
@@ -150,7 +150,7 @@ class AutoInt(ContextModel):
 				context_features_numeric = torch.cat((item_feature, context_result), dim=2)
 
 		if self.training and self.include_source_domain and self.DANN:
-			source_behavior_seq1, source_behavior_seq2, source_t, source_item_feature, source_label = torch.split(feed_dict['source_data'][0],[10,10,1,3,1],dim=1)
+			source_behavior_seq1, source_behavior_seq2, source_t, source_item_feature, source_label = torch.split(torch.Tensor(self.source_data).to(self.device),[10,10,1,3,1],dim=1)
 			source_combined_score, source_pred_immers = self.computing_immers(source_t, source_behavior_seq1.float(), source_behavior_seq2.float(), source_item_feature)
 
 			source_shape = source_combined_score.size()
@@ -168,7 +168,8 @@ class AutoInt(ContextModel):
 		if context_features_numeric.numel()==0:
 			linear_value = self.overall_bias + category_linear
 		else:
-			numeric_linear = torch.zeros(context_features_numeric.shape).to(category_linear.device)
+			# numeric_linear = torch.zeros(context_features_numeric.shape).to(category_linear.device)
+			numeric_linear = torch.zeros_like(context_features_numeric,device=self.device)
 			for i in range(context_features_numeric.shape[2]):
 				numeric_linear[:,:,i] = self.linear_linears[i](context_features_numeric[:,:,i].unsqueeze(-1)).squeeze(-1)
 			linear_value = self.overall_bias + torch.cat([category_linear,numeric_linear],dim=2)
@@ -179,7 +180,8 @@ class AutoInt(ContextModel):
 		if context_features_numeric.numel()==0:
 			autoint_all_embeddings = context_vectors_category
 		else:
-			context_vectors_numeric = torch.zeros(list(context_features_numeric.shape)+[self.vec_size]).to(context_vectors_category.device)
+			# context_vectors_numeric = torch.zeros(list(context_features_numeric.shape)+[self.vec_size]).to(context_vectors_category.device)
+			context_vectors_numeric = torch.zeros((*context_features_numeric.shape, self.vec_size), device=self.device)
 			for i in range(context_features_numeric.shape[2]):
 				context_vectors_numeric[:,:,i,:] = self.context_linears[i](context_features_numeric[:,:,i].unsqueeze(-1)).squeeze(-1)
 			autoint_all_embeddings = torch.cat([context_vectors_category,context_vectors_numeric],dim=2)  # (batch_size, item_num, num_features, embedding_size)

@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 """ DeepFM
 Reference:
 @inproceedings{DBLP:conf/ijcai/GuoTYLH17,

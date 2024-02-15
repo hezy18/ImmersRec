@@ -1,4 +1,3 @@
-# -*- coding: UTF-8 -*-
 """ Reference:
   Wide {\&} Deep Learning for Recommender Systems, Cheng et al. 2016.
 	The 1st workshop on deep learning for recommender systems.
@@ -31,6 +30,8 @@ class WideDeep(ContextModel):
 		self.include_context_features = corpus.include_context_features
 		self.include_immersion = corpus.include_immersion
 		self.include_source_domain = corpus.include_source_domain
+		if self.include_source_domain:
+			self.source_data = corpus.source_data
 		self.DANN = corpus.DANN
 
 		if self.include_context_features:
@@ -93,14 +94,14 @@ class WideDeep(ContextModel):
 			combined_score = torch.cat((sequence1_score, sequence2_score, item_score), dim=2)
 		hidden = torch.relu(self.fc1(combined_score))
 		pred_immers = self.fc2(hidden)
-		return combined_score, pred_immers
+		return combined_score, torch.sigmoid(pred_immers)
 
 	def classify_domain(self, feature, batch=1, epoch=1, n_epoch=200, len_dataloader=200):
 		p = float(batch + epoch * len_dataloader) / n_epoch / len_dataloader
 		alpha = 2. / (1. + np.exp(-10 * p)) - 1
 		reverse_feature = ReverseLayerF.apply(feature, alpha)
-		# print(reverse_feature.shape)
 		domain_output = self.domain_classifier(reverse_feature)
+		
 		return domain_output
 
 	def forward(self, feed_dict):
@@ -123,7 +124,7 @@ class WideDeep(ContextModel):
 				context_features_numeric = torch.cat((item_feature, context_result), dim=2)
 
 		if self.training and self.include_source_domain and self.DANN:
-			source_behavior_seq1, source_behavior_seq2, source_t, source_item_feature, source_label = torch.split(feed_dict['source_data'][0],[10,10,1,3,1],dim=1)
+			source_behavior_seq1, source_behavior_seq2, source_t, source_item_feature, source_label = torch.split(torch.Tensor(self.source_data).to(self.device),[10,10,1,3,1],dim=1)
 			source_combined_score, source_pred_immers = self.computing_immers(source_t, source_behavior_seq1.float(), source_behavior_seq2.float(), source_item_feature)
 
 			source_shape = source_combined_score.size()
@@ -141,7 +142,8 @@ class WideDeep(ContextModel):
 		if context_features_numeric.numel()==0:
 			wide_prediction = self.overall_bias + category_wide.sum(dim=-1)
 		else:
-			numeric_wide = torch.zeros(context_features_numeric.shape).to(category_wide.device)
+			# numeric_wide = torch.zeros(context_features_numeric.shape).to(category_wide.device)
+			numeric_wide = torch.zeros_like(context_features_numeric,device=self.device)
 			for i in range(context_features_numeric.shape[2]):
 				numeric_wide[:,:,i] = self.wide_linears[i](context_features_numeric[:,:,i].unsqueeze(-1)).squeeze(-1)
 			wide_prediction = self.overall_bias + torch.cat([category_wide,numeric_wide],dim=2).sum(dim=-1)
@@ -151,7 +153,8 @@ class WideDeep(ContextModel):
 		if context_features_numeric.numel()==0:
 			deep_vectors = category_deep.flatten(start_dim=-2)
 		else:
-			numeric_deep = torch.zeros(list(context_features_numeric.shape)+[self.vec_size]).to(category_deep.device)
+			# numeric_deep = torch.zeros(list(context_features_numeric.shape)+[self.vec_size]).to(category_deep.device)
+			numeric_deep = torch.zeros((*context_features_numeric.shape, self.vec_size), device=self.device)
 			for i in range(context_features_numeric.shape[2]):
 				numeric_deep[:,:,i,:] = self.deep_linears[i](context_features_numeric[:,:,i].unsqueeze(-1)).squeeze(-1)
 			deep_vectors = torch.cat([category_deep,numeric_deep],dim=2).flatten(start_dim=-2)
