@@ -1,8 +1,3 @@
-# -*- coding: UTF-8 -*-
-'''
-Jiayu Li 2023.05.11
-'''
-
 import logging
 import numpy as np
 import pandas as pd
@@ -53,6 +48,7 @@ class ContextReader(BaseReader):
 
 	def _add_source(self):
 		logging.info('Collect source domain data...')
+		All_source_data = []
 		if self.source_data_df is not None and self.include_source_domain:
 			for f in self.source_names:
 				if f=='rating_immersion':
@@ -60,8 +56,15 @@ class ContextReader(BaseReader):
 					self.source_data_df[f] = (self.source_data_df[f] - self.source_data_df[f].min()) / (self.source_data_df[f].max() - self.source_data_df[f].min())
 				elif (f.find('behavior')!=-1):
 					self.source_data_df[f] = self.source_data_df[f].apply(eval)
-			self.source_data = self.source_data_df
+			for f in self.source_names:
+				if f.find('behavior')!=-1:
+					All_source_data.append(np.array(self.source_data_df[f].tolist()))
+				else:
+					All_source_data.append(self.source_data_df[f].values.reshape(-1,1))
+			All_source_data = np.concatenate(All_source_data, axis=1)
+			self.source_data = All_source_data
 			logging.info('# Source domain data shape: %d, %d' % (self.source_data.shape[0], self.source_data.shape[1]))
+			del self.source_data_df
 
 	def _load_ui_metadata(self):
 		self.item_meta_df, self.user_meta_df = None, None
@@ -106,7 +109,6 @@ class ContextReader(BaseReader):
 						self.feature_max_categorical[f] = 0
 					else: #categorical
 						if (f.find('c_behavior')!=-1) or (f.find('c_session')!=-1):
-							# TODO!!! 这里似乎拆分不了list，只修改feature_max_numeric[f]
 							self.feature_max_categorical[f] = 0
 						else:
 							self.feature_max_categorical[f] = max(self.feature_max_categorical.get(f,0), int(self.data_df[key][f].max()) + 1 )

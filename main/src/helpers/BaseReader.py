@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 import os
 import pickle
 import argparse
@@ -39,6 +37,7 @@ class BaseReader(object):
                     self.train_clicked_set[uid].add(iid)
                 else:
                     self.residual_clicked_set[uid].add(iid)
+        
 
     def _read_data(self):
         logging.info('Reading data from \"{}\", dataset = \"{}\" '.format(self.prefix, self.dataset))
@@ -48,14 +47,15 @@ class BaseReader(object):
             self.data_df[key] = utils.eval_list_columns(self.data_df[key])
 
         logging.info('Counting dataset statistics...')
-        self.all_df_train = self.data_df['train'][['user_id', 'item_id', 'time']]
-        self.all_df_dev_test = pd.concat([self.data_df[key][['user_id', 'item_id', 'time']] for key in ['dev', 'test']])
-        self.all_df = pd.concat([self.all_df_train, self.all_df_dev_test], ignore_index=True)
-        self.n_users, self.n_items = self.all_df['user_id'].max() + 1, self.all_df['item_id'].max() + 1
+        # self.all_df_train = self.data_df['train'][['user_id', 'item_id', 'time']]
+        # self.all_df_dev_test = pd.concat([self.data_df[key][['user_id', 'item_id', 'time']] for key in ['dev', 'test']])
+        all_df = pd.concat([self.data_df[key][['user_id', 'item_id', 'time']] for key in ['train', 'dev', 'test']])
+        # # self.all_df = pd.concat([self.all_df_train, self.all_df_dev_test], ignore_index=True)
+        self.n_users, self.n_items = all_df['user_id'].max() + 1, all_df['item_id'].max() + 1
         for key in ['dev', 'test']:
             if 'neg_items' in self.data_df[key]:
                 neg_items = np.array(self.data_df[key]['neg_items'].tolist())
                 assert (neg_items >= self.n_items).sum() == 0  # assert negative items don't include unseen ones
         logging.info('"# user": {}, "# item": {}, "# entry": {}'.format(
-            self.n_users - 1, self.n_items - 1, len(self.all_df)))
+            self.n_users - 1, self.n_items - 1, len(all_df)))
         

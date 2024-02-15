@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 import logging
 import pandas as pd
 
@@ -16,7 +14,6 @@ class SeqReader(BaseReader):
         self.user_his: store user history sequence [(i1,t1), (i1,t2), ...]
         add the 'position' of each interaction in user_his to data_df
         """
-        #TODO: append the sign of train/dev/test set in self.user_his
         logging.info('Appending history info...')
         sort_df = self.all_df.sort_values(by=['time', 'user_id'], kind='mergesort')
         position = list()
