@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 import torch
 import torch.nn as nn
 import numpy as np
@@ -97,10 +95,6 @@ class AttLayer(nn.Module):
 class TransformerLayer(nn.Module):
 	def __init__(self, d_model, d_ff, n_heads, dropout=0, kq_same=False):
 		super().__init__()
-		"""
-		This is a Basic Block of Transformer. It contains one Multi-head attention object. 
-		Followed by layer norm and position wise feedforward net and dropout layer.
-		"""
 		# Multi-Head Attention Block
 		self.masked_attn_head = MultiHeadAttention(d_model, n_heads, kq_same=kq_same)
 
@@ -124,10 +118,6 @@ class TransformerLayer(nn.Module):
 
 
 class MLP_Block(nn.Module):
-	'''
-	FuxiCTR
-	https://github.com/reczoo/FuxiCTR/blob/v2.0.1/fuxictr/pytorch/layers/blocks/mlp_block.py
-	'''
 	def __init__(self, 
 				 input_dim, 
 				 hidden_units=[], 

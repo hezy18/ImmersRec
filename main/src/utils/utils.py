@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 import os
 import random
 import logging
@@ -127,9 +125,6 @@ def get_activation(activation, hidden_units=None):
             return nn.Softmax(dim=-1)
         elif activation.lower() == "prelu":
             return nn.PReLU(hidden_units, init=0.1)
-        # elif activation.lower() == "dice":
-        #     from fuxictr.pytorch.layers.activations import Dice
-        #     return Dice(hidden_units)
         else:
             return getattr(nn, activation)()
     elif isinstance(activation, list):
