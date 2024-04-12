@@ -4,9 +4,9 @@ Thank you for your great effort! Here's the extra detail.
 
  ## **Q1-brief**: Smaller K-values
  Here are the overall results. Five repeat experiments are conducted. The score shows the average performance and improvement. $^{*}$ and $^{**}$ indicates p-value < 0.05 and <0.1 from two-sided t-test, respectively. \textbf{bold} shows the higher result of the two settings. 
- ![image](https://github.com/hezy18/ImmersRec/assets/45138192/caf17a6b-8be0-4395-80a0-5f0ee05f2661)
+ ![image](https://github.com/hezy18/ImmersRec/figure/K_value_MicroVideo.png)
 
-![image](https://github.com/hezy18/ImmersRec/assets/45138192/1a3be2fb-52aa-43a8-8018-5d8bb4071166)
+![image](https://github.com/hezy18/ImmersRec/assets/K_value_KuaiRand.png)
 
  ## **Q2-brief**: Time consumption 
 
