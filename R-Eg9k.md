@@ -1,6 +1,6 @@
 Dear reviewer,
 
-Thank you for your great effort! Here's some extra detail
+Thank you for your great effort! Here's the extra detail.
 
 **W2** consdering MLP module. We substitute MLP with self-attention module for immersion prediction. Here shows the overall results of recommendation task (ImmersRec-att). **Bold** repesents the best performance of every backbone.
 
