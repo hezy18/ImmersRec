@@ -6,7 +6,7 @@ Thank you for your great effort! Here's the extra detail.
  Here are the overall results. Five repeat experiments are conducted. The score shows the average performance and improvement. $^{*}$ and $^{**}$ indicates p-value < 0.05 and <0.1 from two-sided t-test, respectively. \textbf{bold} shows the higher result of the two settings. 
  ![image](https://github.com/hezy18/ImmersRec/figure/K_value_MicroVideo.png)
 
-![image](https://github.com/hezy18/ImmersRec/assets/K_value_KuaiRand.png)
+![image](https://github.com/hezy18/ImmersRec/figure/K_value_KuaiRand.png)
 
  ## **Q2-brief**: Time consumption 
 
