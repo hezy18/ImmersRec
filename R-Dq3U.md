@@ -3,7 +3,7 @@ Dear reviewer,
 Thank you for your great effort! Here's the extra detail.
 
  ## **Q1-brief**: Smaller K-values
- Here are the overall results. Five repeat experiments are conducted. The score shows the average performance and improvement. $^{*}$ and $^{**}$ indicates p-value < 0.05 and <0.1 from two-sided t-test, respectively. \textbf{bold} shows the higher result of the two settings. 
+ Here are the overall results. Five repeat experiments are conducted. The score shows the average performance and improvement. $^{*}$ and $^{**}$ indicates p-value < 0.05 and <0.1 from two-sided t-test, respectively. Bold shows the higher result of the two settings. 
  ![image](https://github.com/hezy18/ImmersRec/figure/K_value_MicroVideo.png)
 
 
