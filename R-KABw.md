@@ -16,7 +16,7 @@ Here is citations of the works using KuaiRand-1k.
 * Zhang, Qing, et al. "Debiasing recommendation by learning identifiable latent confounders." KDD 2023.
 
 
-## Q1-brief: Attention-based model. 
+### Q1-brief: Attention-based model. 
 We substitute MLP with self-attention module for immersion prediction. Here shows the overall results of recommendation task (ImmersRec-att). **Bold** repesents the best performance of every backbone.
 
 ![image](https://github.com/hezy18/ImmersRec/assets/45138192/e93f3126-e20c-4a1e-8831-eddf5b15cd47)
