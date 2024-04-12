@@ -25,6 +25,6 @@ We conducted  studies where training on view and evaluated by likes. The perform
 
 Here is citations of the works using KuaiRand-1k.
 
-Liu, Ziru, et al. "Multi-task recommendations with reinforcement learning." WWW 2023.
-Wang, Yejing, et al. "Single-shot Feature Selection for Multi-task Recommendations." SIGIR 2023.
-Zhang, Qing, et al. "Debiasing recommendation by learning identifiable latent confounders." KDD 2023.
+* Liu, Ziru, et al. "Multi-task recommendations with reinforcement learning." WWW 2023.
+* Wang, Yejing, et al. "Single-shot Feature Selection for Multi-task Recommendations." SIGIR 2023.
+* Zhang, Qing, et al. "Debiasing recommendation by learning identifiable latent confounders." KDD 2023.
