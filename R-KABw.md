@@ -19,7 +19,7 @@ Here is citations of the works using KuaiRand-1k.
 ### Q1-brief: Attention-based model. 
 We substitute MLP with self-attention module for immersion prediction. Here shows the overall results of recommendation task (ImmersRec-att). **Bold** repesents the best performance of every backbone.
 
-![image](https://github.com/hezy18/ImmersRec/figure/time_cost.png)
+![image](https://github.com/hezy18/ImmersRec/figure/performance_att.png)
 
 
 While the incorporation of attention-based modules may require further refinement, it's important to note that it is not the core focus of our approach. Simpler foundational modules may suffice. Our primary objective remains centered on leveraging minimal data knowledge to enhance user immersion discovery and improve the effectiveness of recommendation systems, potentially pioneering advancements in the field.
