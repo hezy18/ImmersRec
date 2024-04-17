@@ -16,10 +16,11 @@ We conducted  studies where training on view and evaluated by likes. The perform
 | **backbons** | **settings** | **HR@20** | **NDCG@20** | **HR@50** | **NDCG@50** |
 |--------------|--------------|-----------|-------------|-----------|-------------|
 | FinalMLP     | baseline     | 0.2825    | 0.1401      | 0.4579    | 0.1831      |
-|              | ImmersRec    | 0.3321    | 0.1643      | 0.4914    | 0.2047      |
+|              | ImmersRec    | 0.3321``*`    | 0.1643``*`      | 0.4914``*`    | 0.2047``*`      |
 | WideDeep     | baseline     | 0.3683    | 0.1658      | 0.5098    | 0.1940      |
-|              | ImmersRec    | 0.4440    | 0.2299      | 0.5814    | 0.2667      | 
+|              | ImmersRec    | 0.4440``*`    | 0.2299``*`      | 0.5814``*`    | 0.2667``*`      | 
 
+``*` represents the pvalue<0.01 from t-test.
 
 ### W3-brief: Dataset Small
 
