@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 """ Reference:
   Wide {\&} Deep Learning for Recommender Systems, Cheng et al. 2016.
 	The 1st workshop on deep learning for recommender systems.
@@ -14,7 +15,7 @@ from utils.layers import ReverseLayerF
 class WideDeep(ContextModel):
 	reader = 'ContextReader'
 	runner = 'BaseRunner'
-	extra_log_args = ['emb_size','layers']
+	extra_log_args = ['emb_size','layers','sample_rate','woIndicator']
 
 	@staticmethod
 	def parse_model_args(parser):
@@ -22,16 +23,26 @@ class WideDeep(ContextModel):
 							help='Size of embedding vectors.')
 		parser.add_argument('--layers', type=str, default='[64]',
 							help="Size of each layer.")
+		# parser.add_argument('--sample_rate', type=float, default=1.0)
 		return ContextModel.parse_model_args(parser)
 
 	def __init__(self, args, corpus):
 		super().__init__(args, corpus)
 		self.context_feature_dim = sum(corpus.feature_max_categorical.values()) 
+		if 'Douyin_history_fixNeg_recall_choose' in corpus.dataset:
+			self.context_feature_dim = 711294
 		self.include_context_features = corpus.include_context_features
 		self.include_immersion = corpus.include_immersion
 		self.include_source_domain = corpus.include_source_domain
+		self.sample_rate = args.sample_rate
+		self.woIndicator = args.woIndicator
 		if self.include_source_domain:
 			self.source_data = corpus.source_data
+			if self.sample_rate < 1.0:
+				print('sampling source data')
+				sample_size = int(len(self.source_data) * self.sample_rate)
+				sample_indices = np.random.choice(len(self.source_data), sample_size, replace=False)
+				self.source_data = self.source_data[sample_indices]
 		self.DANN = corpus.DANN
 
 		if self.include_context_features:
@@ -41,7 +52,7 @@ class WideDeep(ContextModel):
 				self.context_feature_num = 21 + sum(1 for value in corpus.feature_max_categorical.values() if value > 0) + len(corpus.feature_max_numeric) + corpus.include_context_features
 		else:
 			self.context_feature_num = sum(1 for value in corpus.feature_max_categorical.values() if value > 0) +len(corpus.feature_max_numeric)
-		
+
 		self.vec_size = args.emb_size
 		self.layers = eval(args.layers)
 		self._define_params()
@@ -50,13 +61,14 @@ class WideDeep(ContextModel):
 	def _define_params(self):
 		self.deep_embedding = nn.Embedding(self.context_feature_dim, self.vec_size)
 		self.wide_embedding = nn.Embedding(self.context_feature_dim, 1)
+
 		self.deep_linear = nn.Linear(1,self.vec_size)
 		self.wide_linear = nn.Linear(1, 1)
 		self.deep_linears = nn.ModuleList([nn.Linear(1, self.vec_size) for _ in range(self.context_feature_num-2)])
 		self.wide_linears = nn.ModuleList([nn.Linear(1, 1) for _ in range(self.context_feature_num-2)])
   
 		self.overall_bias = torch.nn.Parameter(torch.tensor([0.01]), requires_grad=True)
-		pre_size = self.context_feature_num * self.vec_size
+		pre_size = self.context_feature_num * self.vec_size # 26*64=1664, 27*64 =1728
 		self.deep_layers = torch.nn.ModuleList()
 		for size in self.layers:
 			self.deep_layers.append(torch.nn.Linear(pre_size, size))
@@ -85,7 +97,10 @@ class WideDeep(ContextModel):
 	def computing_immers(self, t, behavior_seq1, behavior_seq2, item_feature):
 		sequence1_score = self.im_linear1(behavior_seq1)
 		sequence2_score = self.im_linear2(behavior_seq2)
-		time_score = self.im_params[0] * t**2 + self.im_params[1] * t + self.im_params[2]
+		if self.woIndicator:
+			time_score = t
+		else:
+			time_score = self.im_params[0] * t**2 + self.im_params[1] * t + self.im_params[2]
 		item_represent = self.im_item_embedding(item_feature)
 		item_score = torch.mul(time_score, item_represent)
 		if len(t.shape)==2:
@@ -94,15 +109,28 @@ class WideDeep(ContextModel):
 			combined_score = torch.cat((sequence1_score, sequence2_score, item_score), dim=2)
 		hidden = torch.relu(self.fc1(combined_score))
 		pred_immers = self.fc2(hidden)
-		return combined_score, torch.sigmoid(pred_immers)
+		return combined_score, pred_immers
 
 	def classify_domain(self, feature, batch=1, epoch=1, n_epoch=200, len_dataloader=200):
 		p = float(batch + epoch * len_dataloader) / n_epoch / len_dataloader
 		alpha = 2. / (1. + np.exp(-10 * p)) - 1
 		reverse_feature = ReverseLayerF.apply(feature, alpha)
+		# print(reverse_feature.shape)
 		domain_output = self.domain_classifier(reverse_feature)
-		
 		return domain_output
+ 
+	def l2_reg(self, parameters):
+		"""
+		Reference: RecBole
+		RegLoss, L2 regularization on model parameters
+		"""
+		reg_loss = None
+		for W in parameters:
+			if reg_loss is None:
+				reg_loss = W.norm(2)
+			else:
+				reg_loss = reg_loss + W.norm(2)
+		return reg_loss
 
 	def forward(self, feed_dict):
 		context_features_category = feed_dict['context_mh']
@@ -153,7 +181,6 @@ class WideDeep(ContextModel):
 		if context_features_numeric.numel()==0:
 			deep_vectors = category_deep.flatten(start_dim=-2)
 		else:
-			# numeric_deep = torch.zeros(list(context_features_numeric.shape)+[self.vec_size]).to(category_deep.device)
 			numeric_deep = torch.zeros((*context_features_numeric.shape, self.vec_size), device=self.device)
 			for i in range(context_features_numeric.shape[2]):
 				numeric_deep[:,:,i,:] = self.deep_linears[i](context_features_numeric[:,:,i].unsqueeze(-1)).squeeze(-1)
@@ -165,11 +192,12 @@ class WideDeep(ContextModel):
 			predictions = deep_prediction + wide_prediction
 		else:
 			predictions = wide_prediction
-
+		
+		out_dict = {'prediction':predictions}
 		if self.training and self.DANN:
-			return {'prediction':predictions, 
-        			'source_pred_immers':source_pred_immers, 'source_label':source_label, 
-          			'source_d_out':source_d_out, 'target_d_out':target_d_out
-            		}
-		else:
-			return {'prediction':predictions}
+			out_dict.update({'source_pred_immers':source_pred_immers, 'source_label':source_label, 
+          			'source_d_out':source_d_out, 'target_d_out':target_d_out})
+		if self.include_BPRl2: 
+			print('l2_user_emb', self.l2_reg(self.deep_embedding.weight[0:1]), 'l2_item_emb', self.l2_reg(self.deep_embedding.weight[1:2]))
+			out_dict.update({'l2_user_emb':self.l2_reg(self.deep_embedding.weight[0:1]), 'l2_item_emb':self.l2_reg(self.deep_embedding.weight[1:2])})
+		return out_dict

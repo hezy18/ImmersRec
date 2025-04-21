@@ -1,3 +1,5 @@
+# -*- coding: UTF-8 -*-
+
 import os
 import gc
 import torch
@@ -6,14 +8,21 @@ import logging
 import numpy as np
 from time import time
 from tqdm import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from typing import Dict, List
 
 from utils import utils
 from models.BaseModel import BaseModel
+import re
 
-# from utils.logger import logger_loss
-
+def contains_rank_g(metrics):
+    if 'Rank' in metrics or 'RANK' in metrics:
+        return 'RANK@2'
+    pattern = r'^RANK@\d+$'
+    for item in metrics:
+        if re.match(pattern, item):
+            return item
+    return None
 
 class BaseRunner(object):
 	@staticmethod
@@ -36,18 +45,19 @@ class BaseRunner(object):
 							help='Batch size during testing.')
 		parser.add_argument('--optimizer', type=str, default='Adam',
 							help='optimizer: SGD, Adam, Adagrad, Adadelta')
-		parser.add_argument('--num_workers', type=int, default=2,
+		parser.add_argument('--num_workers', type=int, default=1,
 							help='Number of processors when prepare batches in DataLoader')
 		parser.add_argument('--pin_memory', type=int, default=0,
 							help='pin_memory in DataLoader')
-		parser.add_argument('--topk', type=str, default='5,10,20,50',
+		parser.add_argument('--topk', type=str, default='20,50',
 							help='The number of items recommended to each user.')
 		parser.add_argument('--metric', type=str, default='NDCG,HR,AUC',
-							help='metrics: NDCG, HR, AUC')
+							help='metric: NDCG, HR, AUC, Rank@G')
+		parser.add_argument('--multiGPU', type=int, default=0, help='whether to use multiGPU')
 		return parser
 
 	@staticmethod
-	def evaluate_method(predictions: np.ndarray, topk: list, metrics: list) -> Dict[str, float]:
+	def evaluate_method(self, predictions: np.ndarray, topk: list, metrics: list) -> Dict[str, float]:
 		"""
 		:param predictions: (-1, n_candidates) shape, the first column is the score for ground-truth item
 		:param topk: top-K value list
@@ -56,7 +66,7 @@ class BaseRunner(object):
 		"""
 		evaluations = dict()
 		sort_idx = (-predictions).argsort(axis=1)
-		gt_rank = np.argwhere(sort_idx == 0)[:, 1] + 1
+		gt_rank = np.argwhere(sort_idx == 0)[:, 1] + 1 # (29008,)
 		n_samples, n_candidates = predictions.shape
 		ground_truth = np.zeros((n_samples, n_candidates), dtype=int)
 		ground_truth[:, 0] = 1
@@ -69,6 +79,20 @@ class BaseRunner(object):
 				neg_samples = neg_scores.shape[0]
 				auc_values[i] = np.sum(pos_scores > neg_scores[:, np.newaxis]) / (pos_samples * neg_samples)
 			evaluations['AUC'] = auc_values.mean()
+		
+		rank_g = contains_rank_g(metrics)
+		if rank_g != None:
+			n_groups = int(rank_g.split('@')[-1])
+			gt_rank = gt_rank.reshape(gt_rank.shape[0] // n_groups, n_groups) 
+			org_gt_ranks = np.sum(gt_rank, axis=1) - (n_groups - 1)
+			for k in topk:
+				org_hit = (org_gt_ranks <= k)
+				for metric in metrics:
+					evaluations[f'org_HR@{k}'] = org_hit.mean()
+					evaluations[f'org_NDCG@{k}'] = (org_hit / np.log2(org_gt_ranks + 1)).mean()
+		print(rank_g)
+		print(evaluations)
+
 		for k in topk:
 			hit = (gt_rank <= k)
 			for metric in metrics:
@@ -78,6 +102,8 @@ class BaseRunner(object):
 				elif metric == 'NDCG':
 					evaluations[key] = (hit / np.log2(gt_rank + 1)).mean()
 				elif metric == 'AUC':
+					continue
+				elif 'RANK' in metric:
 					continue
 				else:
 					raise ValueError('Undefined evaluation metric: {}.'.format(metric))
@@ -101,6 +127,7 @@ class BaseRunner(object):
 		self.main_metric = '{}@{}'.format(self.metrics[0], self.topk[0])  # early stop based on main_metric
 
 		self.time = None  # will store [start_time, last_step_time]
+		self.multiGPU = args.multiGPU
 
 	def _check_time(self, start=False):
 		if self.time is None or start:
@@ -185,7 +212,10 @@ class BaseRunner(object):
 
 		model.train()
 		loss_lst = list()
-		dl = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers,
+		if self.multiGPU:
+			dl = DataLoader(dataset, batch_size=self.args.batch_size, sampler=DistributedSampler(dataset))
+		else:
+			dl = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers,
 						collate_fn=dataset.collate_batch, pin_memory=self.pin_memory)
 		i = 0
 		for batch in tqdm(dl, leave=False, desc='Epoch {:<3}'.format(epoch), ncols=100, mininterval=1):
@@ -214,8 +244,9 @@ class BaseRunner(object):
 		Evaluate the results for an input dataset.
 		:return: result dict (key: metric@k)
 		"""
+
 		predictions = self.predict(dataset)
-		return self.evaluate_method(predictions, topks, metrics)
+		return self.evaluate_method(self, predictions, topks, metrics)
 
 	def predict(self, dataset: BaseModel.Dataset) -> np.ndarray:
 		"""

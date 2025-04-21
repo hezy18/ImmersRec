@@ -1,3 +1,5 @@
+# -*- coding: UTF-8 -*-
+
 import torch
 import logging
 import numpy as np
@@ -10,9 +12,6 @@ from typing import List
 
 from utils import utils
 from helpers.BaseReader import BaseReader
-
-# from utils.logger import logger_loss
-
 
 class BaseModel(nn.Module):
 	reader, runner = None, None  # choose helpers in specific model classes
@@ -170,6 +169,12 @@ class GeneralModel(BaseModel):
                       		help='The weight of DA module.')
 		parser.add_argument('--tradeoff_Clf', type=float, default=0.1,
                       		help='The weight of domain classfier loss in DA.')
+		parser.add_argument('--include_BPRl2', type=float, default=0,
+                      		help='Whether to use BPR L2 regularization.')
+		parser.add_argument('--BPRl2_user', type=float, default=0,
+                      		help='The weight of user embedding module.')
+		parser.add_argument('--BPRl2_item', type=float, default=0,
+                      		help='The weight of item embedding module.')
 		return BaseModel.parse_model_args(parser)
 
 	def __init__(self, args, corpus):
@@ -181,6 +186,9 @@ class GeneralModel(BaseModel):
 		self.test_all = args.test_all
 		self.tradeoff_DA = args.tradeoff_DA
 		self.tradeoff_Clf = args.tradeoff_Clf
+		self.include_BPRl2 = args.include_BPRl2
+		self.BPRl2_user = args.BPRl2_user
+		self.BPRl2_item = args.BPRl2_item
 		self.DANN = corpus.DANN
 		self.loss_domain = torch.nn.NLLLoss()
 
@@ -196,7 +204,7 @@ class GeneralModel(BaseModel):
 		neg_softmax = (neg_pred - neg_pred.max()).softmax(dim=1)
 		loss = -((pos_pred[:, None] - neg_pred).sigmoid() * neg_softmax).sum(dim=1).log().mean()
 		
-		if self.include_source_domain and self.DANN:
+		if hasattr(self, 'include_source_domain') and self.include_source_domain and self.DANN:
 			mse = F.mse_loss(out_dict['source_pred_immers'], out_dict['source_label'])
 			# print(mse)
 			source_d_out = out_dict['source_d_out']
@@ -205,7 +213,8 @@ class GeneralModel(BaseModel):
 			self.loss_domain = self.loss_domain.to(target_d_out.device)
 			target_loss = self.loss_domain(target_d_out, torch.ones(target_d_out.shape[0]).to(target_d_out.device).long())
 			source_loss = self.loss_domain(source_d_out, torch.zeros(source_d_out.shape[0]).to(target_d_out.device).long())
-			loss += self.tradeoff_DA*(mse + self.tradeoff_Clf*(target_loss + source_loss))
+			# loss += self.tradeoff_DA*(mse + self.tradeoff_Clf*(target_loss + source_loss))
+			loss += self.tradeoff_DA*mse + self.tradeoff_Clf*(target_loss + source_loss)
 			# logger_loss.info('final_loss={:.3f}, BPR={:.3f}, mse={:.3f}, target_loss={:.3f}, source_loss={:.3f}'.format(
 			# 					loss.item(),loss.item(), mse.item(),target_loss.item(),source_loss.item()))
 		# print('BPR={:.3f}'.format(loss.item()))
@@ -213,12 +222,15 @@ class GeneralModel(BaseModel):
 		# loss = F.softplus(-(pos_pred - neg_pred)).mean()
 		# ↑ For numerical stability, use 'softplus(-x)' instead of '-log_sigmoid(x)'
 		# print(loss)
+		if self.include_BPRl2:
+			loss = loss + self.BPRl2_user * out_dict['l2_user_emb'] + self.BPRl2_item * out_dict['l2_item_emb']
 		return loss
 
 	class Dataset(BaseModel.Dataset):
 		def _get_feed_dict(self, index):
 			user_id, target_item = self.data['user_id'][index], self.data['item_id'][index]
-			if self.phase != 'train' and self.model.test_all:
+			# if self.phase != 'train' and self.model.test_all:
+			if self.model.test_all: # self.phase == 'test' and 
 				neg_items = np.arange(1, self.corpus.n_items)
 			else:
 				neg_items = self.data['neg_items'][index]
@@ -320,8 +332,21 @@ class ContextModel(GeneralModel):
 			super().__init__(model, corpus, phase)
 			self.include_id = model.include_id
 
+		# def _get_source_dict(self, feed_dict): # 并不需要index...
+		# 	All_source_data = []
+		# 	if len(self.corpus.source_names):
+		# 		for f in self.corpus.source_names:
+		# 			if f.find('behavior')!=-1:
+		# 				All_source_data.append(np.array(self.corpus.source_data[f].tolist()))
+		# 			else:
+		# 				All_source_data.append(self.corpus.source_data[f].values.reshape(-1,1))
+		# 		All_source_data = np.concatenate(All_source_data, axis=1)
+		# 		feed_dict['source_data'] = All_source_data
+		# 	else:
+		# 		feed_dict['source_data']=[]
+		# 	return feed_dict
 
-		def _get_feed_dict(self, index): 
+		def _get_feed_dict(self, index): # TODO：在这里根据字段名称判断是否属于numeric
 			feed_dict = super()._get_feed_dict(index)
 			# if self.corpus.include_source_domain:
 			# 	feed_dict = self._get_source_dict(feed_dict) 
@@ -444,13 +469,27 @@ class ContextSeqModel(ContextModel):
 				base += self.corpus.feature_max_categorical[feature]
 			return data
 
+		# def _get_source_dict(self, feed_dict): # 并不需要index...
+		# 	All_source_data = []
+		# 	if len(self.corpus.source_names):
+		# 		for f in self.corpus.source_names:
+		# 			if f.find('behavior')!=-1:
+		# 				All_source_data.append(np.array(self.corpus.source_data[f].tolist()))
+		# 			else:
+		# 				All_source_data.append(self.corpus.source_data[f].values.reshape(-1,1))
+		# 		All_source_data = np.concatenate(All_source_data, axis=1)
+		# 		feed_dict['source_data'] = All_source_data
+		# 	else:
+		# 		feed_dict['source_data']=[]
+		# 	return feed_dict
+
 		def _get_feed_dict(self, index):
 			# get item features, user features, and context features separately
 			feed_dict = super()._get_feed_dict(index)
 			# if self.corpus.include_source_domain:
 			# 	feed_dict = self._get_source_dict(feed_dict) 
 			if len(self.corpus.user_feature_names):
-				user_fnames = self.corpus.user_feature_names
+				user_fnames = self.corpus.user_feature_names # TODO:考虑user_feature中numeric的情况
 				user_features = [self.corpus.user_features[feed_dict['user_id']][c] for c in self.corpus.user_feature_names] 
 				if self.include_id:
 					user_fnames = ['user_id'] + user_fnames
@@ -526,3 +565,185 @@ class ContextSeqModel(ContextModel):
 				# feed_dict['context_features'] = self._convert_multihot(self.corpus.context_feature_names, context_features)
 				feed_dict['context_features'] = immers_context_features
 			return feed_dict
+
+class ImpressionModel(GeneralModel):
+	reader='ImpressionReader'
+	@staticmethod
+	def parse_model_args(parser):
+		parser.add_argument('--loss_n', type=str, default='BPRsession',
+							help='loss name,BPR or softmaxCE or pointwiseCE or BPR_hard or listnet or attention_rank')
+		parser.add_argument('--train_max_pos_item', type=int, default=20,
+						help='max positive item sample for test')
+		parser.add_argument('--test_max_pos_item', type=int, default=20,
+						help='max positive item sample for test')
+		parser.add_argument('--test_max_neg_item', type=int, default=20,
+						help='max negative item sample')
+		parser.add_argument('--train_max_neg_item', type=int, default=20,
+						help='max negative item sample')
+		return GeneralModel.parse_model_args(parser)
+
+	def __init__(self, args, corpus):
+		super().__init__(args,corpus)
+		self.loss_n = args.loss_n
+		self.train_max_pos_item=args.train_max_pos_item
+		self.test_max_pos_item=args.test_max_pos_item
+		self.test_max_neg_item=args.test_max_neg_item
+		self.train_max_neg_item=args.train_max_neg_item
+
+	def loss(self, out_dict: dict, target=None):
+		"""
+		BPR ranking loss with optimization on multiple negative samples (a little different now)
+		"Recurrent neural networks with top-k gains for session-based recommendations"
+		:param out_dict: contain prediction with [batch_size, -1], the first column for positive, the rest for negative
+		:return:
+		"""
+		prediction = out_dict['prediction']
+		batch_size = prediction.shape[0]
+		mask=torch.where(target==-1,target,torch.zeros_like(target))+1#only non pad item is 1,shape like prediction
+		test_have_neg = mask[:,self.train_max_pos_item]#if no neg 0, has neg 1
+
+		if 'BPR' in self.loss_n:
+			valid_mask = mask.unsqueeze(dim=-1) * mask.unsqueeze(dim=-1).transpose(-1,-2)
+			pos_mask = (torch.arange(prediction.size(1)).unsqueeze(0).repeat(prediction.shape[0],1) < self.train_max_pos_item).to(self.device)
+			neg_mask = (torch.arange(prediction.size(1)).unsqueeze(0).repeat(prediction.shape[0],1) >= self.train_max_pos_item).to(self.device)
+			select_mask = pos_mask.unsqueeze(dim=-1) * neg_mask.unsqueeze(dim=-1).transpose(-1,-2) * valid_mask # get all valid mask in the two-dimensional matrix
+			score_diff = prediction.unsqueeze(dim=-1) - prediction.unsqueeze(dim=-1).transpose(-1,-2) # batch * impression list * impression list
+			score_diff_mask = score_diff * select_mask
+			
+			neg_pred=torch.where(neg_mask*mask==1,prediction,-torch.tensor(float("Inf")).float().to(self.device))
+			neg_softmax = (neg_pred - neg_pred.max()).softmax(dim=1)
+			if 'hard' in self.loss_n: # Higher weights for lower-score positive items
+				pos_pred=torch.where(pos_mask*mask==1,prediction,torch.tensor(float("Inf")).float().to(self.device))
+				pos_softmax = (pos_pred.min() - pos_pred).softmax(dim=1)
+			else:
+				pos_pred=torch.where(pos_mask*mask==1,prediction,-torch.tensor(float("Inf")).float().to(self.device))
+				pos_softmax = (pos_pred - pos_pred.max()).softmax(dim=1)
+
+			if 'pair' in self.loss_n: # reweight after log-softmax
+				loss = ((F.softplus(-score_diff_mask)*neg_softmax.unsqueeze(dim=1)).sum(dim=-1)*pos_softmax).sum(dim=-1)
+				loss = loss.mean()
+			elif 'session' in self.loss_n: # reweight between log and softmax
+				loss = -((score_diff_mask.sigmoid()*neg_softmax.unsqueeze(dim=1)).sum(dim=-1)*pos_softmax).sum(dim=-1).log()
+				loss = loss.mean()
+			else: # reweight within log-softmax
+				loss = F.softplus(-(score_diff_mask*neg_softmax.unsqueeze(dim=1)).sum(dim=-1)*pos_softmax).sum(dim=-1)
+				loss = loss.mean()
+			return loss
+
+		elif self.loss_n=='listnet': #assume that the click probability is softmax(label) for pos and neg items
+			target=torch.where(target!=-1,target.float(),-torch.tensor(float("Inf")).float().to(self.device))
+			prediction = out_dict['prediction']
+
+			target_softmax = (target-target.max()).softmax(dim=1)
+			prediction_softmax = (prediction-prediction.max()).softmax(dim=1)
+			prediction_softmax=torch.where(mask==1,prediction_softmax,torch.ones_like(prediction_softmax)) #make sure that paddings are 1, so that after log they are 0
+
+			loss = -( target_softmax * prediction_softmax.log() ).sum(dim=1)
+			loss = loss*test_have_neg/test_have_neg.sum()*len(test_have_neg)
+			loss = loss.mean()
+			return loss
+
+		elif self.loss_n=='softmaxCE':#assume that the click probility is 1/k for k pos items, and zero for neg items
+			pos_mask=torch.where(target==1,target,torch.zeros_like(target))
+			pos_length=pos_mask.sum(axis=1)
+			prediction = out_dict['prediction']
+			prediction=torch.where(mask==1,prediction,-torch.ones_like(prediction)*100000)
+			pre_softmax = (prediction - prediction.max(dim=1, keepdim=True)[0]).softmax(dim=1)  # B * (Sample_num)
+			target_pre = pre_softmax[:, :self.train_max_pos_item]  # B * pos_max_num
+			target_pre = torch.where(mask[:,:self.train_max_pos_item]==1,target_pre,torch.ones_like(target_pre))
+			loss = -(target_pre).log().sum(axis=1).div(pos_length)
+
+			loss = loss*test_have_neg/test_have_neg.sum()*len(test_have_neg)
+			loss = loss.mean()
+			return loss
+
+		elif self.loss_n=='attention_rank': #softmax CE, but add more punishment for neg samples by adding the (1-label_i)log(1-predict_i) term
+			target=torch.where(target!=-1,target.float(),-torch.tensor(float("Inf")).float().to(self.device))
+			target_softmax = (target-target.max()).softmax(dim=1)
+
+			prediction = out_dict['prediction']
+			prediction=torch.where(mask==1,prediction,-torch.ones_like(target)*100000)
+			prediction_softmax = (prediction-prediction.max()).softmax(dim=1)
+
+			prediction_softmax1 = torch.where(mask==1,prediction_softmax,torch.ones_like(prediction_softmax))#make sure that paddings are 1, so that after log they are 0
+			loss_1 = -(target_softmax*prediction_softmax1.log()).sum(dim=1)
+
+			prediction_softmax2 = torch.where(mask==1,prediction_softmax,torch.zeros_like(prediction_softmax))#make sure that paddings are 0, so that after log 1-they are 0
+			prediction_softmax2 = torch.where(prediction_softmax2!=1,prediction_softmax2,torch.zeros_like(prediction_softmax2))#make sure that no 1 in prediction_softmax2, because it only happens when only 1 sample, so its loss must be 0
+			loss_2 = -((1-target_softmax)*(1-prediction_softmax2).log()).sum(dim=1)
+
+			loss = loss_1+loss_2
+			loss = loss*test_have_neg/test_have_neg.sum()*len(test_have_neg)
+			loss = loss.mean()
+			return loss
+		
+		elif self.loss_n=='pointwiseCE':
+			sample_length=mask.sum(axis=1)
+			prediction = torch.sigmoid(out_dict['prediction'])
+			loss = F.binary_cross_entropy(prediction,target.float(),reduction='none')
+			loss = loss.mul(mask)
+			return loss.sum(axis=1).div(sample_length).mean()
+
+		elif self.loss_n=='sampled_softmax': 
+			'''
+			Reference:
+				On the effectiveness of sampled softmax loss for item recommendation. Wu et al. 2022. Arxiv.
+			'''
+			pos_mask=torch.where(target==1,target,torch.zeros_like(target))
+			relative_exp = (torch.exp(prediction*pos_mask)*pos_mask).sum(dim=-1) / (torch.exp(prediction*mask)*mask).sum(dim=-1)
+			loss = -relative_exp.log()
+			loss = loss.mean()
+			return loss
+		
+		else:
+			raise ValueError('Undefined loss function: {}'.format(self.loss_n))
+
+
+	class Dataset(GeneralModel.Dataset):
+		def __init__(self, model, corpus, phase: str):
+			super().__init__(model,corpus,phase)
+			if self.phase=='train':
+				self.pos_len=self.model.train_max_pos_item
+				self.neg_len=self.model.train_max_neg_item
+			else:
+				self.pos_len=self.model.test_max_pos_item
+				self.neg_len=self.model.test_max_neg_item
+
+		def _get_feed_dict(self, index):
+			user_id, target_item = self.data['user_id'][index], self.data['pos_items'][index]
+			# if self.phase != 'train' and self.model.test_all:
+			if self.phase == 'test' and self.model.test_all:
+				neg_items = np.arange(1, self.corpus.n_items)
+			else:
+				neg_items = self.data['neg_items'][index]
+
+			feed_dict = {
+				'user_id': user_id,
+				'pos_items': np.array(target_item[:self.pos_len]),
+				'neg_items': np.array(neg_items[:self.neg_len]),
+				'pos_num': min(self.data['pos_num'][index],self.pos_len),
+				'neg_num': min(self.data['neg_num'][index],self.neg_len)
+			}
+			return feed_dict
+		
+		# Collate a batch according to the list of feed dicts
+		def collate_batch(self, feed_dicts: List[dict]):
+			feed_dict = super().collate_batch(feed_dicts)
+			assert 'pos_items' in feed_dict and 'neg_items' in feed_dict
+
+			pos_items = feed_dict['pos_items']
+			if pos_items.shape[-1] < self.pos_len: # padding positive items
+				pos_items = torch.cat((pos_items, torch.zeros(pos_items.shape[0],self.pos_len-pos_items.shape[-1])),dim=-1)
+			neg_items = feed_dict['neg_items']
+			if neg_items.shape[-1] < self.neg_len: # padding negative items
+				neg_items = torch.cat((neg_items, torch.zeros(neg_items.shape[0],self.neg_len-neg_items.shape[-1])),dim=-1)
+			feed_dict['item_id'] = torch.cat((pos_items,neg_items),dim=-1).long()
+			feed_dict.pop('pos_items')
+			feed_dict.pop('neg_items')
+			return feed_dict
+		
+		def actions_before_epoch(self): 
+			# Have to define it in order to use the pre-defined negative items for training.
+			# Or else the negative sampling function of general model dataset will be called.
+			pass
+

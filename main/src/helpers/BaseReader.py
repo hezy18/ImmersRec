@@ -1,3 +1,5 @@
+# -*- coding: UTF-8 -*-
+
 import os
 import pickle
 import argparse
@@ -9,14 +11,20 @@ from utils import utils
 
 
 class BaseReader(object):
+    extra_log_args = []
     @staticmethod
     def parse_data_args(parser):
         parser.add_argument('--path', type=str, default='data/',
                             help='Input data dir.')
-        parser.add_argument('--dataset', type=str, default='MINDf',
+        parser.add_argument('--dataset', type=str, default='MIND',
                             help='Choose a dataset.')
         parser.add_argument('--sep', type=str, default='\t',
                             help='sep of csv file.')
+        parser.add_argument('--include_immersion', type=int, default=0,
+								help='Whether contain immersion.')
+        parser.add_argument('--sample_rate', type=float, default=1.0)
+        parser.add_argument('--woIndicator', type=int, default=0)
+        parser.add_argument('--DANN', type=int, default=0)
         return parser
 
     def __init__(self, args):
@@ -37,7 +45,8 @@ class BaseReader(object):
                     self.train_clicked_set[uid].add(iid)
                 else:
                     self.residual_clicked_set[uid].add(iid)
-        
+        self.include_immersion = args.include_immersion
+        self.DANN = args.DANN
 
     def _read_data(self):
         logging.info('Reading data from \"{}\", dataset = \"{}\" '.format(self.prefix, self.dataset))
